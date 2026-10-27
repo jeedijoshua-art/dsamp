@@ -32,17 +32,53 @@ sudo apt update
 sudo apt install -y build-essential clang make git nodejs npm
 ```
 
-#### Windows (WSL2 Recommended)
-FraudGraph relies on POSIX child-process streaming and standard Makefiles. On Windows, use **WSL2 (Ubuntu)**:
-```bash
-wsl --install
-# Inside Ubuntu terminal, execute the Linux commands above
-```
+#### Windows (Native PowerShell / CMD or WSL2)
+
+FraudGraph supports both **Native Windows** (using MinGW `g++` and Node.js) and **WSL2 (Ubuntu)**:
+
+##### Method A: Native Windows (No VM needed)
+1. Install **Node.js (LTS)** from [nodejs.org](https://nodejs.org) or via winget:
+   ```powershell
+   winget install OpenJS.NodeJS.LTS
+   ```
+2. Install **Git for Windows**:
+   ```powershell
+   winget install Git.Git
+   ```
+3. Install **MinGW-w64 (`g++`)** (e.g., via MSYS2 or w64devkit):
+   ```powershell
+   winget install MSYS2.MSYS2
+   # Or install via WinLibs / w64devkit and add 'bin' folder to System PATH
+   ```
+4. Verify in Command Prompt:
+   ```cmd
+   node -v
+   npm -v
+   g++ --version
+   ```
+
+##### Method B: Windows Subsystem for Linux (WSL2 - Recommended)
+If you prefer an isolated Ubuntu environment inside Windows:
+1. Open PowerShell as Administrator and run:
+   ```powershell
+   wsl --install -d Ubuntu
+   ```
+2. Restart your computer if prompted, launch Ubuntu, and run:
+   ```bash
+   sudo apt update && sudo apt install -y build-essential clang make git nodejs npm
+   ```
 
 ---
 
 ## 2. Cloning the Repository
 
+### On Windows (Command Prompt, PowerShell, or Git Bash):
+```cmd
+git clone https://github.com/jeedijoshua-art/dsamp.git
+cd dsamp
+```
+
+### On macOS / Linux:
 ```bash
 git clone https://github.com/jeedijoshua-art/dsamp.git
 cd dsamp
@@ -52,8 +88,21 @@ cd dsamp
 
 ## 3. Quick Start (Automated Single-Command Launch)
 
-The project includes an executable bash script `run.sh` that automates compilation, unit testing, dependency installation, and service startup.
+### On Windows:
 
+#### Option A: Command Prompt (Double-click or run)
+```cmd
+run.bat
+```
+This automatically compiles `engine/bin/fraudgraph_engine.exe`, executes the 92 C++ unit tests, installs npm packages, and launches both backend (`:5001`) and frontend (`:5173`) in separate command windows.
+
+#### Option B: PowerShell
+```powershell
+.\run.ps1
+```
+*(If execution is blocked by Windows security policy, run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` first).*
+
+### On macOS / Linux / WSL2:
 ```bash
 chmod +x run.sh
 ./run.sh

@@ -164,3 +164,49 @@ Add executable permissions to the bash script:
 chmod +x run.sh
 ./run.sh
 ```
+
+---
+
+## 7. Windows: PowerShell Execution Policy Error
+
+### Symptom
+Running `.\run.ps1` gives:
+```
+File C:\...\dsamp\run.ps1 cannot be loaded because running scripts is disabled on this system.
+```
+
+### Root Cause
+Windows PowerShell restricts script execution by default to protect against unauthorized scripts.
+
+### Resolution
+Temporarily allow local script execution in the current PowerShell terminal:
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\run.ps1
+```
+Or use the Command Prompt batch script instead:
+```cmd
+run.bat
+```
+
+---
+
+## 8. Windows: `g++` or `make` Not Recognized
+
+### Symptom
+```
+'g++' is not recognized as an internal or external command, operable program or batch file.
+```
+
+### Root Cause
+MinGW-w64 or GCC is either not installed or its `bin` folder is not included in the Windows `PATH` environment variable.
+
+### Resolution
+1. Install MinGW-w64 via MSYS2 or download [WinLibs MinGW](https://winlibs.com/).
+2. Add the compiler path (e.g., `C:\msys64\ucrt64\bin` or `C:\mingw64\bin`) to your Windows **System Environment Variables -> Path**.
+3. Re-open Command Prompt and verify:
+   ```cmd
+   g++ --version
+   ```
+4. Alternatively, use **WSL2** (`wsl --install -d Ubuntu`), which includes standard Linux package repositories.
+

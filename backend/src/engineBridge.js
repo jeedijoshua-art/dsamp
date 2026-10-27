@@ -3,16 +3,47 @@ const fs = require('fs');
 const { spawn, execSync } = require('child_process');
 
 const ENGINE_DIR = path.resolve(__dirname, '../../engine');
-const ENGINE_BIN = path.resolve(ENGINE_DIR, 'bin/fraudgraph_engine');
+const isWindows = process.platform === 'win32';
+
+function getEngineBinaryPath() {
+  const exePath = path.resolve(ENGINE_DIR, 'bin/fraudgraph_engine.exe');
+  const binPath = path.resolve(ENGINE_DIR, 'bin/fraudgraph_engine');
+
+  if (isWindows) {
+    if (fs.existsSync(exePath)) return exePath;
+    if (fs.existsSync(binPath)) return binPath;
+    return exePath;
+  } else {
+    if (fs.existsSync(binPath)) return binPath;
+    if (fs.existsSync(exePath)) return exePath;
+    return binPath;
+  }
+}
+
+let ENGINE_BIN = getEngineBinaryPath();
 
 function ensureEngineBuilt() {
+  ENGINE_BIN = getEngineBinaryPath();
   if (!fs.existsSync(ENGINE_BIN)) {
-    console.log('[FraudGraph Bridge] C++ binary not found. Compiling via make...');
+    console.log('[FraudGraph Bridge] C++ binary not found. Compiling engine...');
+    const binDir = path.resolve(ENGINE_DIR, 'bin');
+    if (!fs.existsSync(binDir)) {
+      fs.mkdirSync(binDir, { recursive: true });
+    }
+
     try {
       execSync('make all', { cwd: ENGINE_DIR, stdio: 'inherit' });
     } catch (err) {
-      throw new Error(`Failed to compile C++ engine: ${err.message}`);
+      console.log('[FraudGraph Bridge] make command failed or not found. Attempting direct C++ compiler fallback...');
+      const targetOut = isWindows ? 'bin/fraudgraph_engine.exe' : 'bin/fraudgraph_engine';
+      const cmd = `g++ -std=c++17 -O2 -Wall -Wextra -Iinclude -Isrc src/main.cpp src/graph.cpp src/algorithms.cpp src/rules.cpp -o ${targetOut}`;
+      try {
+        execSync(cmd, { cwd: ENGINE_DIR, stdio: 'inherit' });
+      } catch (fallbackErr) {
+        throw new Error(`Failed to compile C++ engine via make and g++ fallback: ${fallbackErr.message}`);
+      }
     }
+    ENGINE_BIN = getEngineBinaryPath();
   }
 }
 
@@ -86,5 +117,8 @@ function runEngine(payload) {
 module.exports = {
   runEngine,
   ensureEngineBuilt,
-  ENGINE_BIN
+  get ENGINE_BIN() {
+    return getEngineBinaryPath();
+  },
+  getEngineBinaryPath
 };

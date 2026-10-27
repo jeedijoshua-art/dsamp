@@ -144,59 +144,122 @@ dsamp/
 ## 5. Quick Start (Single-Command Launch)
 
 ### Prerequisites
-- **macOS** (with Xcode Command Line Tools) or **Linux** (with `build-essential`) or **Windows WSL2**
-- **C++17 Compiler:** Apple Clang 14+ or GCC 9+
-- **Node.js:** v18.0.0 or higher (tested on v24)
-- **GNU Make:** 3.81 or higher
+- **macOS** (with Xcode Command Line Tools)
+- **Linux** (with `build-essential` and `make`)
+- **Windows 10 / 11** (see dedicated [Windows Setup Guide](#windows-setup-guide-for-teammates) below)
+- **C++17 Compiler:** Apple Clang 14+, GCC 9+ (MinGW on Windows), or MSVC
+- **Node.js:** v18.0.0 or higher (tested on v20 and v24)
+- **GNU Make:** 3.81 or higher (or direct compiler fallback on Windows)
 
-### Launch Command
+---
+
+## 6. Quick Start & Execution
+
+### Cloning the Repository
+
+#### On Windows (PowerShell or Command Prompt):
+```powershell
+git clone https://github.com/jeedijoshua-art/dsamp.git
+cd dsamp
+```
+
+#### On macOS / Linux / Git Bash:
+```bash
+git clone https://github.com/jeedijoshua-art/dsamp.git
+cd dsamp
+```
+
+---
+
+### Windows Setup Guide (For Teammates)
+
+We provide three simple ways to run FraudGraph on Windows:
+
+#### Option 1: Native Windows via Batch Script (Easiest for CMD)
+If your teammates have **Node.js** and **MinGW-w64 (`g++`)** installed:
+1. Double-click **`run.bat`** in File Explorer, or run in Command Prompt:
+   ```cmd
+   run.bat
+   ```
+2. The script compiles `fraudgraph_engine.exe`, executes tests, installs dependencies, and launches backend (`:5001`) and frontend (`:5173`) in dedicated windows.
+3. Open **`http://localhost:5173`** in your browser.
+
+#### Option 2: Native Windows via PowerShell
+In PowerShell:
+```powershell
+.\run.ps1
+```
+*(If PowerShell blocks the script with an execution policy warning, run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` first).*
+
+#### Option 3: Windows Subsystem for Linux (WSL2 - Recommended)
+If your teammate does not have MinGW installed, WSL2 provides a native Linux environment:
+1. Open PowerShell as Administrator and enable WSL:
+   ```powershell
+   wsl --install -d Ubuntu
+   ```
+2. Restart your PC, open Ubuntu terminal, and install dependencies:
+   ```bash
+   sudo apt update && sudo apt install -y build-essential clang make git nodejs npm
+   ```
+3. Clone and launch with the single-command script:
+   ```bash
+   git clone https://github.com/jeedijoshua-art/dsamp.git
+   cd dsamp
+   chmod +x run.sh && ./run.sh
+   ```
+4. Open your Windows browser to **`http://localhost:5173`**.
+
+---
+
+### macOS & Linux Quick Launch
 From the repository root:
 ```bash
 chmod +x run.sh
 ./run.sh
 ```
 
-### What `run.sh` Performs Automatically:
-1. Compiles the C++17 engine binaries (`engine/bin/fraudgraph_engine` and `engine/bin/test_engine`).
+### What the Launch Scripts Perform Automatically:
+1. Compiles the C++17 engine binaries (`engine/bin/fraudgraph_engine` or `.exe`).
 2. Runs the 92-assertion C++ test suite and verifies 100% pass rate.
-3. Automatically installs Node.js backend and frontend dependencies if `node_modules/` is missing.
+3. Automatically installs Node.js backend and frontend dependencies if missing.
 4. Frees lingering background processes on ports `5001` and `5173`.
 5. Starts the Express backend on `http://localhost:5001` and Vite frontend on `http://localhost:5173`.
-6. Traps `SIGINT` (`Ctrl+C`) to cleanly terminate all processes upon exit.
 
 **Access the Web Interface:** Open **`http://localhost:5173`** in your browser.
 
 ---
 
-## 6. Manual Component Execution
+### Manual Step-by-Step Execution (All Platforms)
 
 If you prefer to start components in separate terminal windows:
 
-### Terminal 1: Build & Verify C++ Engine
-```bash
-cd engine
-make clean
-make test   # Executes 92-assertion test suite
-make all    # Produces bin/fraudgraph_engine
-```
+#### Terminal 1: Build & Verify C++ Engine
+- **On macOS / Linux:**
+  ```bash
+  cd engine
+  make clean && make test && make all
+  ```
+- **On Windows (Command Prompt / PowerShell with g++):**
+  ```cmd
+  cd engine
+  if not exist bin mkdir bin
+  g++ -std=c++17 -O2 -Wall -Wextra -Iinclude -Isrc src/main.cpp src/graph.cpp src/algorithms.cpp src/rules.cpp -o bin/fraudgraph_engine.exe
+  g++ -std=c++17 -O2 -Wall -Wextra -Iinclude -Isrc tests/test_engine.cpp src/graph.cpp src/algorithms.cpp src/rules.cpp -o bin/test_engine.exe
+  bin\test_engine.exe
+  ```
 
-### Terminal 2: Start Express Backend API
+#### Terminal 2: Start Express Backend API
 ```bash
 cd backend
-npm install # First-time setup
-npm start   # Starts server on http://localhost:5001
+npm install
+npm start
 ```
 
-Verify backend health:
-```bash
-curl -s http://localhost:5001/api/health
-```
-
-### Terminal 3: Start Vite Frontend Dashboard
+#### Terminal 3: Start Vite Frontend Dashboard
 ```bash
 cd frontend
-npm install # First-time setup
-npm run dev # Starts Vite server on http://localhost:5173
+npm install
+npm run dev
 ```
 
 ---
