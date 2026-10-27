@@ -1,0 +1,15 @@
+{
+  "name": "fraudgraph-backend",
+  "version": "1.0.0",
+  "description": "Express API bridge for FraudGraph C++17 Graph Algorithm Engine",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.1"
+  }
+}

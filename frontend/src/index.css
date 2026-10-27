@@ -1,0 +1,93 @@
+@import 'reactflow/dist/style.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0b1120;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* React Flow Dark Customizations */
+.react-flow__background {
+  background-color: #070b14 !important;
+}
+
+.react-flow__controls {
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(51, 65, 85, 0.6);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #0f172a !important;
+}
+
+.react-flow__controls-button {
+  background: #0f172a !important;
+  border-bottom: 1px solid #1e293b !important;
+  color: #94a3b8 !important;
+  fill: #94a3b8 !important;
+}
+
+.react-flow__controls-button:hover {
+  background: #1e293b !important;
+  color: #38bdf8 !important;
+  fill: #38bdf8 !important;
+}
+
+.react-flow__attribution {
+  display: none !important;
+}
+
+/* Path and Cycle Highlight Animations */
+@keyframes flowGlow {
+  0% {
+    stroke-dashoffset: 24;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+.highlighted-path-edge path {
+  stroke: #06b6d4 !important;
+  stroke-width: 3.5px !important;
+  stroke-dasharray: 6 3 !important;
+  animation: flowGlow 1s linear infinite !important;
+  filter: drop-shadow(0 0 6px rgba(6, 182, 212, 0.8));
+}
+
+.highlighted-cycle-edge path {
+  stroke: #f43f5e !important;
+  stroke-width: 3.5px !important;
+  stroke-dasharray: 6 3 !important;
+  animation: flowGlow 0.8s linear infinite !important;
+  filter: drop-shadow(0 0 8px rgba(244, 63, 94, 0.9));
+}
+
+.highlighted-bfs-edge path {
+  stroke: #10b981 !important;
+  stroke-width: 3px !important;
+  stroke-dasharray: 5 3 !important;
+  animation: flowGlow 1.2s linear infinite !important;
+  filter: drop-shadow(0 0 6px rgba(16, 185, 129, 0.8));
+}
+
+.highlighted-dfs-edge path {
+  stroke: #a855f7 !important;
+  stroke-width: 3px !important;
+  stroke-dasharray: 5 3 !important;
+  animation: flowGlow 1.2s linear infinite !important;
+  filter: drop-shadow(0 0 6px rgba(168, 85, 247, 0.8));
+}
