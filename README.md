@@ -49,17 +49,17 @@ Comprehensive modular documentation is organized under [`docs/`](docs/):
 
 ```mermaid
 graph TD
-    UI[Frontend Dashboard<br/>React 18 + TS + Vite + Tailwind] -->|JSON Requests via Proxy :5173| API[Backend Bridge<br/>Node.js + Express :5001]
-    API -->|stdin JSON stream<br/>Safe spawn / IPC| CPP[C++17 Graph Engine<br/>bin/fraudgraph_engine]
-    CPP -->|stdout JSON stream<br/>O(V+E) Algorithm Results| API
-    API -->|Aggregated State & Highlights| UI
+    UI["Frontend Dashboard<br/>React 18 + TS + Vite + Tailwind"] -->|"JSON Requests via Proxy :5173"| API["Backend Bridge<br/>Node.js + Express :5001"]
+    API -->|"stdin JSON stream<br/>Safe spawn / IPC"| CPP["C++17 Graph Engine<br/>bin/fraudgraph_engine"]
+    CPP -->|"stdout JSON stream<br/>Algorithm Results"| API
+    API -->|"Aggregated State & Highlights"| UI
     
-    subgraph "Native C++17 Core Engine (engine/)"
-        G[DirectedGraph<br/>Dual std::unordered_map Adjacency List]
-        BFS[BFS Traversal & Shortest Path<br/>std::queue + Predecessor Backtracking]
-        DFS[DFS Traversal<br/>Discovery & Finish Timers]
-        CYC[Three-State DFS Cycle Detection<br/>WHITE / GRAY / BLACK]
-        RULES[Explainable Heuristic Rules<br/>Integer-Paise Flow Reconciliation]
+    subgraph Engine ["Native C++17 Core Engine (engine/)"]
+        G["DirectedGraph<br/>Dual std::unordered_map Adjacency List"]
+        BFS["BFS Traversal & Shortest Path<br/>std::queue + Predecessor Backtracking"]
+        DFS["DFS Traversal<br/>Discovery & Finish Timers"]
+        CYC["Three-State DFS Cycle Detection<br/>WHITE / GRAY / BLACK"]
+        RULES["Explainable Heuristic Rules<br/>Integer-Paise Flow Reconciliation"]
         G --> BFS
         G --> DFS
         G --> CYC

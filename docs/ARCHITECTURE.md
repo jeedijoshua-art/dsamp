@@ -10,41 +10,41 @@ FraudGraph adopts a decoupled three-tier architecture that isolates high-perform
 
 ```mermaid
 graph TD
-    subgraph "Frontend Layer (React 18 + TypeScript)"
-        UI[Interactive UI & Canvas<br/>React Flow + Tailwind CSS]
-        State[React State & Hooks<br/>App.tsx]
-        APIClient[HTTP API Client<br/>api/client.ts]
+    subgraph Frontend ["Frontend Layer (React 18 + TypeScript)"]
+        UI["Interactive UI & Canvas<br/>React Flow + Tailwind CSS"]
+        State["React State & Hooks<br/>App.tsx"]
+        APIClient["HTTP API Client<br/>api/client.ts"]
         UI <--> State
         State <--> APIClient
     end
 
-    subgraph "Backend Bridge Layer (Node.js + Express)"
-        Server[HTTP Server :5001<br/>server.js]
-        Router[REST Router<br/>routes.js]
-        Bridge[Process Bridge<br/>engineBridge.js]
-        Store[In-Memory Dataset Store<br/>sampleData.js]
+    subgraph Backend ["Backend Bridge Layer (Node.js + Express)"]
+        Server["HTTP Server :5001<br/>server.js"]
+        Router["REST Router<br/>routes.js"]
+        Bridge["Process Bridge<br/>engineBridge.js"]
+        Store["In-Memory Dataset Store<br/>sampleData.js"]
         
-        APIClient -->|HTTP / JSON via Vite Proxy :5173| Server
+        APIClient -->|"HTTP / JSON via Vite Proxy :5173"| Server
         Server --> Router
         Router <--> Store
         Router --> Bridge
     end
 
-    subgraph "Native Core Layer (C++17 Engine)"
-        CLI[Main CLI Runner<br/>main.cpp]
-        JSONIO[JSON Serializer/Parser<br/>json_io.hpp]
-        GraphCore[DirectedGraph Adjacency List<br/>graph.hpp / graph.cpp]
-        AlgoCore[Algorithms: BFS, DFS, 3-State Cycle, SP<br/>algorithms.hpp / algorithms.cpp]
-        RuleCore[Forensic Rule Engine<br/>rules.hpp / rules.cpp]
+    subgraph NativeCore ["Native Core Layer (C++17 Engine)"]
+        CLI["Main CLI Runner<br/>main.cpp"]
+        JSONIO["JSON Serializer/Parser<br/>json_io.hpp"]
+        GraphCore["DirectedGraph Adjacency List<br/>graph.hpp / graph.cpp"]
+        AlgoCore["Algorithms: BFS, DFS, 3-State Cycle, SP<br/>algorithms.hpp / algorithms.cpp"]
+        RuleCore["Forensic Rule Engine<br/>rules.hpp / rules.cpp"]
         
-        Bridge -->|stdin JSON stream<br/>child_process.spawn| CLI
+        Bridge -->|"stdin JSON stream<br/>child_process.spawn"| CLI
         CLI --> JSONIO
         JSONIO --> GraphCore
         GraphCore --> AlgoCore
         GraphCore --> RuleCore
         AlgoCore --> JSONIO
         RuleCore --> JSONIO
-        JSONIO -->|stdout JSON stream| Bridge
+        JSONIO -->|"stdout JSON stream"| Bridge
     end
 ```
 
@@ -115,10 +115,10 @@ Node.js (engineBridge.js)                        C++17 Engine (main.cpp)
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as Investigator (Browser)
-    participant UI as React Frontend (:5173)
-    participant API as Express Backend (:5001)
-    participant CPP as C++17 Engine Binary
+    actor User as Investigator
+    participant UI as React Frontend
+    participant API as Express Backend
+    participant CPP as C++ Engine Binary
 
     User->>UI: Selects "ACC_ALICE" & "ACC_TARGET_D" -> Click "Find Shortest Route"
     UI->>API: POST /api/execute { action: "shortest_path", params: { source, destination } }
