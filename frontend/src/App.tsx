@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Navbar, AppMode } from './components/Navbar';
 import { DatasetSelector } from './components/DatasetSelector';
 import { KPICards } from './components/KPICards';
@@ -10,10 +10,17 @@ import { TransactionTable } from './components/TransactionTable';
 import { AddTransactionModal } from './components/AddTransactionModal';
 import { AddAccountModal } from './components/AddAccountModal';
 import { AcademicConceptsModal } from './components/AcademicConceptsModal';
+import { InvestigationHeader } from './components/InvestigationHeader';
+import { InvestigationScenarioSelector } from './components/InvestigationScenarioSelector';
+import { InvestigationSummaryCards } from './components/InvestigationSummaryCards';
+import { InvestigationFindingsPanel } from './components/InvestigationFindingsPanel';
+import { EvidenceDetailsPanel } from './components/EvidenceDetailsPanel';
 import {
   fetchHealth,
   fetchDatasets,
+  fetchScenarios,
   selectDataset,
+  selectScenario,
   resetDataset,
   addAccount,
   addTransaction,
@@ -33,7 +40,9 @@ import {
   DFSResult,
   DirectedCycle,
   PrebuiltDataset,
-  TraversalStep
+  TraversalStep,
+  InvestigationScenario,
+  RuleFinding
 } from './types';
 import {
   AlertCircle,
@@ -125,8 +134,15 @@ export const App: React.FC = () => {
   // Selected Elements & Highlights
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
-  const [activeHighlight, setActiveHighlight] = useState<'none' | 'path' | 'cycle' | 'bfs' | 'dfs'>('none');
+  const [activeHighlight, setActiveHighlight] = useState<'none' | 'path' | 'cycle' | 'bfs' | 'dfs' | 'finding'>('none');
   const [activeCycle, setActiveCycle] = useState<DirectedCycle | null>(null);
+
+  // Investigation Scenarios & Workflow State (for fraud_investigation)
+  const [scenarios, setScenarios] = useState<InvestigationScenario[]>([]);
+  const [activeScenarioId, setActiveScenarioId] = useState<string>('multiple_signals');
+  const [hasInvestigated, setHasInvestigated] = useState<boolean>(false);
+  const [isInvestigating, setIsInvestigating] = useState<boolean>(false);
+  const [selectedFinding, setSelectedFinding] = useState<RuleFinding | null>(null);
 
   // Step-by-Step Traversal Trace Highlights
   const [stepVisitedNodes, setStepVisitedNodes] = useState<string[]>([]);
@@ -157,6 +173,8 @@ export const App: React.FC = () => {
     setSelectedEdgeId(null);
     setActiveHighlight('none');
     setActiveCycle(null);
+    setSelectedFinding(null);
+    setHasInvestigated(false);
     setStepVisitedNodes([]);
     setStepTreeEdges([]);
     setCurrentStepNode(undefined);
@@ -317,6 +335,19 @@ export const App: React.FC = () => {
           setDatasetBfsStartNode(firstDs.default_bfs_start);
           setDatasetDfsStartNode(firstDs.default_dfs_start);
 
+          // Fetch investigation scenarios
+          try {
+            const scenarioRes = await fetchScenarios();
+            if (scenarioRes && scenarioRes.scenarios) {
+              setScenarios(scenarioRes.scenarios);
+              if (scenarioRes.active_scenario_id) {
+                setActiveScenarioId(scenarioRes.active_scenario_id);
+              }
+            }
+          } catch (scErr) {
+            console.warn('Scenarios fetch non-critical warning:', scErr);
+          }
+
           await syncDatasetWithEngine(
             firstDs.accounts,
             firstDs.transactions,
@@ -344,6 +375,8 @@ export const App: React.FC = () => {
       setSelectedEdgeId(null);
       setActiveHighlight('none');
       setActiveCycle(null);
+      setSelectedFinding(null);
+      setHasInvestigated(false);
       setStepVisitedNodes([]);
       setStepTreeEdges([]);
       setCurrentStepNode(undefined);
@@ -827,7 +860,137 @@ export const App: React.FC = () => {
       setStepTreeEdges([]);
       setCurrentStepNode(undefined);
     }
+  };  // Handler for Selecting Scenario (Mode A: Fraud Investigation)
+  const handleSelectScenario = async (scenarioId: string) => {
+    try {
+      setLoading(true);
+      setError(null);
+      setSelectedAccountId(null);
+      setSelectedEdgeId(null);
+      setActiveHighlight('none');
+      setActiveCycle(null);
+      setSelectedFinding(null);
+      setHasInvestigated(false);
+      setStepVisitedNodes([]);
+      setStepTreeEdges([]);
+      setCurrentStepNode(undefined);
+
+      const res = await selectScenario(scenarioId);
+      setActiveScenarioId(scenarioId);
+
+      if (res.dataset) {
+        setDatasetAccounts(res.dataset.accounts);
+        setDatasetTransactions(res.dataset.transactions);
+        const src = res.dataset.accounts[0]?.id || '';
+        const dest = res.dataset.accounts[res.dataset.accounts.length - 1]?.id || '';
+        await syncDatasetWithEngine(res.dataset.accounts, res.dataset.transactions, src, dest);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to select investigation scenario');
+    } finally {
+      setLoading(false);
+    }
   };
+
+  // Handler for Executing Fraud Investigation
+  const handleRunInvestigation = async () => {
+    try {
+      setIsInvestigating(true);
+      setError(null);
+      setSelectedFinding(null);
+      setActiveHighlight('none');
+
+      if (accounts.length === 0) {
+        throw new Error('Graph is empty: no accounts found to analyze.');
+      }
+
+      const resp = await executeEngine({
+        accounts,
+        transactions,
+        action: 'full_analysis',
+        params: {
+          start_node: bfsStartNode,
+          source: shortestPathSource,
+          destination: shortestPathDest
+        }
+      });
+
+      if (resp.status === 'success') {
+        if (isCustom) {
+          setCustomSummary(resp.graph_summary);
+          setCustomInvestigation(resp.investigation);
+          setCustomCycleDetection(resp.cycle_detection);
+        } else {
+          setDatasetSummary(resp.graph_summary);
+          setDatasetInvestigation(resp.investigation);
+          setDatasetCycleDetection(resp.cycle_detection);
+        }
+        setHasInvestigated(true);
+      } else {
+        setError(resp.error || 'Investigation engine failed to analyze graph');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to execute fraud investigation');
+    } finally {
+      setIsInvestigating(false);
+    }
+  };
+
+  // Handler to Reset Scenario
+  const handleResetScenario = async () => {
+    setSelectedFinding(null);
+    setHasInvestigated(false);
+    setActiveHighlight('none');
+    setSelectedAccountId(null);
+    setSelectedEdgeId(null);
+    await handleSelectScenario(activeScenarioId);
+  };
+
+  // Inspect Finding Evidence
+  const handleInspectEvidence = (finding: RuleFinding) => {
+    setSelectedFinding(finding);
+    setActiveHighlight('finding');
+    if (finding.flagged_accounts.length > 0) {
+      setSelectedAccountId(finding.flagged_accounts[0]);
+    }
+    setSelectedEdgeId(null);
+  };
+
+  // Close Evidence Panel
+  const handleCloseEvidence = () => {
+    setSelectedFinding(null);
+    setSelectedAccountId(null);
+    setSelectedEdgeId(null);
+    setActiveHighlight('none');
+  };
+
+  const findingAccountsSet = useMemo(() => {
+    if (!selectedFinding) return new Set<string>();
+    return new Set(selectedFinding.flagged_accounts);
+  }, [selectedFinding]);
+
+  const findingEdgesSet = useMemo(() => {
+    if (!selectedFinding) return new Set<string>();
+    return new Set(selectedFinding.flagged_transactions);
+  }, [selectedFinding]);
+
+  const { flaggedAccountIds, elevatedAccountIds } = useMemo(() => {
+    const flagged = new Set<string>();
+    const elevated = new Set<string>();
+    if (hasInvestigated && investigation?.findings) {
+      investigation.findings.forEach((f) => {
+        f.flagged_accounts.forEach((acc) => {
+          flagged.add(acc);
+          if (f.severity === 'HIGH') {
+            elevated.add(acc);
+          }
+        });
+      });
+    }
+    return { flaggedAccountIds: flagged, elevatedAccountIds: elevated };
+  }, [hasInvestigated, investigation]);
+
+  const isFraudInvestigation = currentMode === 'dataset_playground' && activeDatasetId === 'fraud_investigation';
 
   const activeDatasetObj = datasets.find((d) => d.id === activeDatasetId);
 
@@ -924,16 +1087,46 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* KPI CARDS (Derived directly from active graph state) */}
-        <KPICards
-          summary={summary}
-          investigation={investigation}
-          cycleDetection={cycleDetection}
-          onSelectIntermediaries={() => setIsFindingsOpen(true)}
-          onSelectCycles={() => {
-            handleRunCycleDetection();
-          }}
-        />
+        {/* TOP SUMMARY / WORKFLOW HEADER */}
+        {isFraudInvestigation ? (
+          <div className="space-y-4">
+            <InvestigationHeader
+              scenarioName={scenarios.find((s) => s.id === activeScenarioId)?.name || 'Multiple Warning Signals'}
+              accountCount={accounts.length}
+              transactionCount={transactions.length}
+              onRunInvestigation={handleRunInvestigation}
+              onResetScenario={handleResetScenario}
+              isInvestigating={isInvestigating}
+              hasRun={hasInvestigated}
+            />
+
+            <InvestigationScenarioSelector
+              scenarios={scenarios}
+              activeScenarioId={activeScenarioId}
+              onSelectScenario={handleSelectScenario}
+              disabled={loading || isInvestigating}
+            />
+
+            <InvestigationSummaryCards
+              summary={summary}
+              investigation={investigation}
+              cycleDetection={cycleDetection}
+              hasRun={hasInvestigated}
+              isInvestigating={isInvestigating}
+              onRunInvestigation={handleRunInvestigation}
+            />
+          </div>
+        ) : (
+          <KPICards
+            summary={summary}
+            investigation={investigation}
+            cycleDetection={cycleDetection}
+            onSelectIntermediaries={() => setIsFindingsOpen(true)}
+            onSelectCycles={() => {
+              handleRunCycleDetection();
+            }}
+          />
+        )}
 
         {/* CENTRAL WORKSPACE GRID */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
@@ -943,6 +1136,7 @@ export const App: React.FC = () => {
               accounts={accounts}
               transactions={transactions}
               datasetId={isCustom ? 'custom_lab' : activeDatasetId}
+              scenarioId={isFraudInvestigation ? activeScenarioId : undefined}
               selectedAccountId={selectedAccountId}
               onSelectAccount={(id) => {
                 setSelectedAccountId(id || null);
@@ -958,6 +1152,11 @@ export const App: React.FC = () => {
               dfsResult={dfsResult}
               activeCycle={activeCycle}
               shortestPathResult={shortestPathResult}
+              findingAccounts={findingAccountsSet}
+              findingEdges={findingEdgesSet}
+              findingSeverity={selectedFinding?.severity}
+              flaggedAccountIds={flaggedAccountIds}
+              elevatedAccountIds={elevatedAccountIds}
               stepVisitedNodes={stepVisitedNodes}
               stepTreeEdges={stepTreeEdges}
               currentStepNode={currentStepNode}
@@ -973,124 +1172,185 @@ export const App: React.FC = () => {
               }}
               onOpenAddAccount={() => setIsAddAccOpen(true)}
               onDeleteTransaction={handleDeleteTransaction}
+              onClearFindingHighlight={handleCloseEvidence}
               isCustomMode={isCustom}
             />
           </div>
 
-          {/* RIGHT: ALGORITHM WORKBENCH & ACCOUNT INSPECTOR (5 of 12 cols on desktop) */}
-          <div className="lg:col-span-5 flex flex-col gap-4">
-            {/* Algorithm Studio / Workbench */}
-            <AlgorithmControls
-              accounts={accounts}
-              activeDatasetId={isCustom ? 'custom_lab' : activeDatasetId}
-              source={shortestPathSource}
-              destination={shortestPathDest}
-              onSourceChange={(src) => {
-                if (isCustom) setCustomShortestPathSource(src);
-                else setDatasetShortestPathSource(src);
-              }}
-              onDestChange={(dest) => {
-                if (isCustom) setCustomShortestPathDest(dest);
-                else setDatasetShortestPathDest(dest);
-              }}
-              bfsStartNode={bfsStartNode}
-              onBfsStartChange={(node) => {
-                if (isCustom) setCustomBfsStartNode(node);
-                else setDatasetBfsStartNode(node);
-              }}
-              dfsStartNode={dfsStartNode}
-              onDfsStartChange={(node) => {
-                if (isCustom) setCustomDfsStartNode(node);
-                else setDatasetDfsStartNode(node);
-              }}
-              onRunBFS={handleRunBFS}
-              onRunDFS={handleRunDFS}
-              onRunCycleDetection={handleRunCycleDetection}
-              onRunShortestPath={handleRunShortestPath}
-              onHighlight={handleHighlight}
-              onStepHighlight={handleStepHighlight}
-              bfsResult={bfsResult}
-              dfsResult={dfsResult}
-              cycleResult={cycleDetection}
-              shortestPathResult={shortestPathResult}
-              activeHighlight={activeHighlight}
-              loading={loading}
-            />
+          {/* RIGHT: ALGORITHM WORKBENCH OR INVESTIGATION FINDINGS & EVIDENCE (5 of 12 cols on desktop) */}
+          <div className="lg:col-span-5 flex flex-col gap-4 lg:max-h-[750px] lg:overflow-y-auto pr-1">
+            {isFraudInvestigation ? (
+              <>
+                {/* 1. Evidence Inspection Panel (Primary Focus when finding is clicked) */}
+                {selectedFinding && (
+                  <EvidenceDetailsPanel
+                    finding={selectedFinding}
+                    accounts={accounts}
+                    transactions={transactions}
+                    onClose={handleCloseEvidence}
+                    onSelectAccount={(id) => setSelectedAccountId(id)}
+                  />
+                )}
 
-            {/* Account Inspector (appears when user clicks an account node) */}
-            {selectedAccountId && (
-              <AccountInspector
-                account={accounts.find((a) => a.id === selectedAccountId) || null}
-                transactions={transactions}
-                onClose={() => setSelectedAccountId(null)}
-                onSetSource={(id) => {
-                  if (isCustom) setCustomShortestPathSource(id);
-                  else setDatasetShortestPathSource(id);
-                  handleRunShortestPath(id, shortestPathDest);
-                }}
-                onSetDest={(id) => {
-                  if (isCustom) setCustomShortestPathDest(id);
-                  else setDatasetShortestPathDest(id);
-                  handleRunShortestPath(shortestPathSource, id);
-                }}
-                onStartBfs={(id) => {
-                  if (isCustom) setCustomBfsStartNode(id);
-                  else setDatasetBfsStartNode(id);
-                  handleRunBFS(id);
-                }}
-                onStartDfs={(id) => {
-                  if (isCustom) setCustomDfsStartNode(id);
-                  else setDatasetDfsStartNode(id);
-                  handleRunDFS(id);
-                }}
-                onDeleteAccount={handleDeleteAccount}
-                onDeleteTransaction={handleDeleteTransaction}
-                isCustomMode={isCustom}
-              />
+                {/* 2. Account Inspector (if an account is clicked and no finding is selected) */}
+                {selectedAccountId && !selectedFinding && (
+                  <AccountInspector
+                    account={accounts.find((a) => a.id === selectedAccountId) || null}
+                    transactions={transactions}
+                    onClose={() => setSelectedAccountId(null)}
+                    onSetSource={(id) => {
+                      if (isCustom) setCustomShortestPathSource(id);
+                      else setDatasetShortestPathSource(id);
+                      handleRunShortestPath(id, shortestPathDest);
+                    }}
+                    onSetDest={(id) => {
+                      if (isCustom) setCustomShortestPathDest(id);
+                      else setDatasetShortestPathDest(id);
+                      handleRunShortestPath(shortestPathSource, id);
+                    }}
+                    onStartBfs={(id) => {
+                      if (isCustom) setCustomBfsStartNode(id);
+                      else setDatasetBfsStartNode(id);
+                      handleRunBFS(id);
+                    }}
+                    onStartDfs={(id) => {
+                      if (isCustom) setCustomDfsStartNode(id);
+                      else setDatasetDfsStartNode(id);
+                      handleRunDFS(id);
+                    }}
+                    onDeleteAccount={handleDeleteAccount}
+                    onDeleteTransaction={handleDeleteTransaction}
+                    isCustomMode={isCustom}
+                  />
+                )}
+
+                {/* 3. Findings Panel */}
+                <InvestigationFindingsPanel
+                  findings={hasInvestigated ? (investigation?.findings || []) : []}
+                  selectedFinding={selectedFinding}
+                  onInspectEvidence={handleInspectEvidence}
+                  onClearEvidence={handleCloseEvidence}
+                  onSelectAccount={(id) => setSelectedAccountId(id)}
+                />
+              </>
+            ) : (
+              <>
+                {/* Standard Algorithm Studio / Workbench */}
+                <AlgorithmControls
+                  accounts={accounts}
+                  activeDatasetId={isCustom ? 'custom_lab' : activeDatasetId}
+                  source={shortestPathSource}
+                  destination={shortestPathDest}
+                  onSourceChange={(src) => {
+                    if (isCustom) setCustomShortestPathSource(src);
+                    else setDatasetShortestPathSource(src);
+                  }}
+                  onDestChange={(dest) => {
+                    if (isCustom) setCustomShortestPathDest(dest);
+                    else setDatasetShortestPathDest(dest);
+                  }}
+                  bfsStartNode={bfsStartNode}
+                  onBfsStartChange={(node) => {
+                    if (isCustom) setCustomBfsStartNode(node);
+                    else setDatasetBfsStartNode(node);
+                  }}
+                  dfsStartNode={dfsStartNode}
+                  onDfsStartChange={(node) => {
+                    if (isCustom) setCustomDfsStartNode(node);
+                    else setDatasetDfsStartNode(node);
+                  }}
+                  onRunBFS={handleRunBFS}
+                  onRunDFS={handleRunDFS}
+                  onRunCycleDetection={handleRunCycleDetection}
+                  onRunShortestPath={handleRunShortestPath}
+                  onHighlight={handleHighlight}
+                  onStepHighlight={handleStepHighlight}
+                  bfsResult={bfsResult}
+                  dfsResult={dfsResult}
+                  cycleResult={cycleDetection}
+                  shortestPathResult={shortestPathResult}
+                  activeHighlight={activeHighlight}
+                  loading={loading}
+                />
+
+                {/* Account Inspector (appears when user clicks an account node) */}
+                {selectedAccountId && (
+                  <AccountInspector
+                    account={accounts.find((a) => a.id === selectedAccountId) || null}
+                    transactions={transactions}
+                    onClose={() => setSelectedAccountId(null)}
+                    onSetSource={(id) => {
+                      if (isCustom) setCustomShortestPathSource(id);
+                      else setDatasetShortestPathSource(id);
+                      handleRunShortestPath(id, shortestPathDest);
+                    }}
+                    onSetDest={(id) => {
+                      if (isCustom) setCustomShortestPathDest(id);
+                      else setDatasetShortestPathDest(id);
+                      handleRunShortestPath(shortestPathSource, id);
+                    }}
+                    onStartBfs={(id) => {
+                      if (isCustom) setCustomBfsStartNode(id);
+                      else setDatasetBfsStartNode(id);
+                      handleRunBFS(id);
+                    }}
+                    onStartDfs={(id) => {
+                      if (isCustom) setCustomDfsStartNode(id);
+                      else setDatasetDfsStartNode(id);
+                      handleRunDFS(id);
+                    }}
+                    onDeleteAccount={handleDeleteAccount}
+                    onDeleteTransaction={handleDeleteTransaction}
+                    isCustomMode={isCustom}
+                  />
+                )}
+              </>
             )}
           </div>
         </div>
 
         {/* BOTTOM COLLAPSIBLE EVIDENCE & EXPLORATION DRAWERS */}
         <div className="space-y-3 pt-2">
-          {/* Drawer 1: Rule-Based Investigation Findings & Discrepancies */}
-          <div className="rounded-2xl bg-navy-900/90 border border-slate-800 overflow-hidden shadow-xl">
-            <button
-              onClick={() => setIsFindingsOpen(!isFindingsOpen)}
-              className="w-full p-4 flex items-center justify-between hover:bg-slate-800/40 transition-colors text-left"
-            >
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400">
-                  <ShieldAlert className="w-5 h-5" />
+          {/* Drawer 1: Rule-Based Investigation Findings & Discrepancies (Mode A non-fraud and Custom Lab) */}
+          {!isFraudInvestigation && (
+            <div className="rounded-2xl bg-navy-900/90 border border-slate-800 overflow-hidden shadow-xl">
+              <button
+                onClick={() => setIsFindingsOpen(!isFindingsOpen)}
+                className="w-full p-4 flex items-center justify-between hover:bg-slate-800/40 transition-colors text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                    <ShieldAlert className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                      Rule Investigation &amp; Retained Discrepancies
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-950 border border-amber-800 text-amber-300 font-mono font-bold">
+                        {investigation?.total_findings || 0} Review Signals
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Rule-based anomaly detection: Intermediary Mules, Retention Percentages, and Neutral Explanations
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
-                    Rule Investigation &amp; Retained Discrepancies
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-950 border border-amber-800 text-amber-300 font-mono font-bold">
-                      {investigation?.total_findings || 0} Review Signals
-                    </span>
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    Rule-based anomaly detection: Intermediary Mules, Retention Percentages, and Neutral Explanations
-                  </p>
+
+                <div className="flex items-center gap-2 text-slate-400">
+                  <span className="text-xs font-mono">{isFindingsOpen ? 'Collapse' : 'Expand'}</span>
+                  {isFindingsOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                 </div>
-              </div>
+              </button>
 
-              <div className="flex items-center gap-2 text-slate-400">
-                <span className="text-xs font-mono">{isFindingsOpen ? 'Collapse' : 'Expand'}</span>
-                {isFindingsOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-              </div>
-            </button>
-
-            {isFindingsOpen && (
-              <div className="p-4 border-t border-slate-800/80 bg-navy-950/60">
-                <InvestigationPanel
-                  report={investigation}
-                  onSelectAccount={(id) => setSelectedAccountId(id)}
-                />
-              </div>
-            )}
-          </div>
+              {isFindingsOpen && (
+                <div className="p-4 border-t border-slate-800/80 bg-navy-950/60">
+                  <InvestigationPanel
+                    report={investigation}
+                    onSelectAccount={(id) => setSelectedAccountId(id)}
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Drawer 2: Directed Transaction Ledger */}
           <div className="rounded-2xl bg-navy-900/90 border border-slate-800 overflow-hidden shadow-xl">

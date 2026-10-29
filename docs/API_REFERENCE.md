@@ -76,6 +76,47 @@ Resets the specified dataset (or the currently active dataset) back to its origi
   }
   ```
 
+### `GET /api/scenarios`
+Returns the catalog of selectable investigation scenarios available within the Fraud Investigation dataset (`circular_flow`, `intermediary_account`, `multiple_signals`).
+
+- **Response `200 OK`:**
+  ```json
+  {
+    "status": "success",
+    "active_scenario_id": "multiple_signals",
+    "scenarios": [
+      {
+        "id": "circular_flow",
+        "name": "Circular Money Flow",
+        "description": "Closed circular transaction loops transferring funds across accounts before returning to origin.",
+        "graph_concept": "Directed Cycle Detection (Three-State DFS) & Back-Edges",
+        "account_count": 5,
+        "transaction_count": 5
+      }
+    ]
+  }
+  ```
+
+### `POST /api/scenarios/select`
+Switches the active in-memory investigation scenario within the Fraud Investigation dataset.
+
+- **Request Body:**
+  ```json
+  {
+    "scenario_id": "circular_flow"
+  }
+  ```
+- **Response `200 OK`:**
+  ```json
+  {
+    "status": "success",
+    "message": "Investigation scenario switched to 'Circular Money Flow'.",
+    "active_dataset_id": "fraud_investigation",
+    "active_scenario_id": "circular_flow",
+    "dataset": { "metadata": { ... }, "accounts": [...], "transactions": [...] }
+  }
+  ```
+
 ### `GET /api/dataset`
 Retrieves the current in-memory active working dataset.
 

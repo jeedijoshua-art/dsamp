@@ -301,6 +301,82 @@ void testRuleInvestigation() {
     TEST_ASSERT(found_route_discrepancy, "RULE_ROUTE_DISCREPANCY triggered for Alice -> Target route");
 }
 
+void testBfsVsDfsDisparity() {
+    std::cout << "\n--- Testing BFS vs DFS Traversal Disparity on Branching Graph ---" << std::endl;
+    DirectedGraph g;
+    // Root S with two branches:
+    // Branch 1 (Deep): S -> M -> T -> H -> B
+    // Branch 2 (Shallow): S -> V
+    // Disconnected: ISO
+    g.addAccount(Account("S", "Source Root"));
+    g.addAccount(Account("M", "Mule Node"));
+    g.addAccount(Account("T", "Target Node"));
+    g.addAccount(Account("H", "Hub Node"));
+    g.addAccount(Account("B", "Branch Node"));
+    g.addAccount(Account("V", "Vendor Node"));
+    g.addAccount(Account("ISO", "Isolated Node"));
+
+    // Lexicographical neighbor order from S: 'M' < 'V'
+    g.addTransaction(Transaction("TX_SM", "S", "M", 5000));
+    g.addTransaction(Transaction("TX_SV", "S", "V", 3000));
+    g.addTransaction(Transaction("TX_MT", "M", "T", 4200));
+    g.addTransaction(Transaction("TX_TH", "T", "H", 3500));
+    g.addTransaction(Transaction("TX_HB", "H", "B", 2000));
+
+    auto bfs = runBFS(g, "S");
+    auto dfs = runDFS(g, "S");
+
+    TEST_ASSERT(bfs.success, "BFS succeeded on branching graph");
+    TEST_ASSERT(dfs.success, "DFS succeeded on branching graph");
+
+    // 1. Visited counts match (6 reachable nodes)
+    TEST_ASSERT(bfs.traversal_order.size() == 6, "BFS visits exactly 6 reachable nodes");
+    TEST_ASSERT(dfs.traversal_order.size() == 6, "DFS visits exactly 6 reachable nodes");
+
+    // 2. Traversal orders must differ
+    TEST_ASSERT(bfs.traversal_order != dfs.traversal_order, "BFS and DFS traversal orders differ on branching graph");
+
+    // 3. BFS visits in strictly non-decreasing hop distance
+    bool non_decreasing_hops = true;
+    for (size_t i = 1; i < bfs.traversal_order.size(); ++i) {
+        int d_prev = bfs.distances[bfs.traversal_order[i - 1]];
+        int d_curr = bfs.distances[bfs.traversal_order[i]];
+        if (d_curr < d_prev) {
+            non_decreasing_hops = false;
+            break;
+        }
+    }
+    TEST_ASSERT(non_decreasing_hops, "BFS visits vertices in strictly non-decreasing hop distance");
+
+    // 4. BFS visits shallow neighbor V at distance 1 before deeper nodes T (dist 2), H (dist 3), B (dist 4)
+    auto it_bfs_v = std::find(bfs.traversal_order.begin(), bfs.traversal_order.end(), "V");
+    auto it_bfs_t = std::find(bfs.traversal_order.begin(), bfs.traversal_order.end(), "T");
+    auto it_bfs_b = std::find(bfs.traversal_order.begin(), bfs.traversal_order.end(), "B");
+    TEST_ASSERT(it_bfs_v < it_bfs_t, "BFS visits V (dist 1) before T (dist 2)");
+    TEST_ASSERT(it_bfs_t < it_bfs_b, "BFS visits T (dist 2) before B (dist 4)");
+
+    // 5. DFS follows branch deeply (S -> M -> T -> H -> B) before backtracking to V
+    auto it_dfs_b = std::find(dfs.traversal_order.begin(), dfs.traversal_order.end(), "B");
+    auto it_dfs_v = std::find(dfs.traversal_order.begin(), dfs.traversal_order.end(), "V");
+    TEST_ASSERT(it_dfs_b < it_dfs_v, "DFS visits deep leaf B before backtracking to shallow branch V");
+
+    // 6. DFS Parenthesis Theorem verification: B is descendant of M -> [d[B], f[B]] inside [d[M], f[M]]
+    int d_m = dfs.discovery_times["M"];
+    int f_m = dfs.finish_times["M"];
+    int d_b = dfs.discovery_times["B"];
+    int f_b = dfs.finish_times["B"];
+    TEST_ASSERT(d_m < d_b && f_b < f_m, "DFS Parenthesis Theorem verified: [d[B], f[B]] is strictly nested within [d[M], f[M]]");
+
+    // 7. BFS and DFS return the exact same reachable vertex set
+    std::set<std::string> bfs_set(bfs.traversal_order.begin(), bfs.traversal_order.end());
+    std::set<std::string> dfs_set(dfs.traversal_order.begin(), dfs.traversal_order.end());
+    TEST_ASSERT(bfs_set == dfs_set, "BFS and DFS return the exact same reachable vertex set");
+
+    // 8. Disconnected node ISO is never reached
+    TEST_ASSERT(bfs_set.find("ISO") == bfs_set.end(), "Disconnected node ISO not reached by BFS");
+    TEST_ASSERT(dfs_set.find("ISO") == dfs_set.end(), "Disconnected node ISO not reached by DFS");
+}
+
 int main() {
     std::cout << "==========================================================" << std::endl;
     std::cout << "   FraudGraph C++17 Core Engine - Automated Test Suite    " << std::endl;
@@ -311,6 +387,7 @@ int main() {
     testMissingAccounts();
     testBFSBranching();
     testDFSBranching();
+    testBfsVsDfsDisparity();
     testCycleDetectionCyclic();
     testCycleDetectionAcyclic();
     testSelfLoop();

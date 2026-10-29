@@ -187,6 +187,72 @@ async function run() {
   assert(muleF.discrepancy_inr === 8000, 'Retained discrepancy is exactly ₹8,000 (16%)');
   assert(typeof muleF.neutral_explanation === 'string', 'Neutral non-fraud explanation provided');
 
+  // BFS Execution on Fraud Investigation from ACC_ALICE
+  const bfsAlice = await post('/api/execute', {
+    action: 'bfs',
+    params: { start_node: 'ACC_ALICE' }
+  });
+  assert(bfsAlice.bfs.success === true, 'BFS executed successfully from ACC_ALICE');
+  assert(bfsAlice.bfs.traversal_order.length === 12, 'BFS visits exactly 12 reachable vertices from ACC_ALICE');
+  assert(bfsAlice.bfs.steps.length === 12, 'BFS has 12 execution trace steps');
+
+  // Check BFS level-by-level hop order
+  const bfsOrder = bfsAlice.bfs.traversal_order;
+  assert(bfsOrder[0] === 'ACC_ALICE', 'BFS root is ACC_ALICE (hop 0)');
+  assert(bfsOrder[1] === 'ACC_MULE_X' && bfsOrder[2] === 'ACC_SUPPLIER_S', 'BFS level 1 contains ACC_MULE_X and ACC_SUPPLIER_S');
+  assert(bfsOrder[3] === 'ACC_TARGET_D' && bfsOrder[4] === 'ACC_VENDOR_V', 'BFS level 2 contains ACC_TARGET_D and ACC_VENDOR_V');
+  assert(bfsOrder[5] === 'ACC_BRANCH_HUB', 'BFS level 3 contains ACC_BRANCH_HUB');
+
+  // Verify non-decreasing hop distance property in BFS traversal and trace
+  for (let i = 0; i < bfsOrder.length - 1; i++) {
+    const distCurr = bfsAlice.bfs.distances[bfsOrder[i]];
+    const distNext = bfsAlice.bfs.distances[bfsOrder[i + 1]];
+    assert(
+      distCurr <= distNext,
+      `BFS order index ${i} (${bfsOrder[i]}: ${distCurr}) <= index ${i + 1} (${bfsOrder[i + 1]}: ${distNext})`
+    );
+    assert(
+      bfsAlice.bfs.steps[i].metric_val <= bfsAlice.bfs.steps[i + 1].metric_val,
+      `BFS step ${i} metric_val (${bfsAlice.bfs.steps[i].metric_val}) <= step ${i + 1} (${bfsAlice.bfs.steps[i + 1].metric_val})`
+    );
+  }
+
+  // DFS Execution on Fraud Investigation from ACC_ALICE
+  const dfsAlice = await post('/api/execute', {
+    action: 'dfs',
+    params: { start_node: 'ACC_ALICE' }
+  });
+  assert(dfsAlice.dfs.success === true, 'DFS executed successfully from ACC_ALICE');
+  assert(dfsAlice.dfs.traversal_order.length === 12, 'DFS visits exactly 12 reachable vertices from ACC_ALICE');
+  assert(dfsAlice.dfs.steps.length === 12, 'DFS has 12 execution trace steps');
+
+  const dfsOrder = dfsAlice.dfs.traversal_order;
+  // Disparity assertion: BFS and DFS traversal orders are strictly distinct
+  assert(bfsOrder.join(',') !== dfsOrder.join(','), 'BFS and DFS produce distinct traversal orders on branching graph');
+
+  // DFS dives deeply down ACC_MULE_X -> ACC_TARGET_D -> ACC_BRANCH_HUB before visiting ACC_SUPPLIER_S
+  assert(dfsOrder[0] === 'ACC_ALICE', 'DFS root is ACC_ALICE');
+  assert(dfsOrder[1] === 'ACC_MULE_X', 'DFS first child is ACC_MULE_X');
+  assert(dfsOrder[2] === 'ACC_TARGET_D', 'DFS dives into ACC_TARGET_D');
+  assert(dfsOrder[3] === 'ACC_BRANCH_HUB', 'DFS dives into ACC_BRANCH_HUB');
+  assert(dfsOrder.indexOf('ACC_SUPPLIER_S') === 10, 'DFS visits ACC_SUPPLIER_S only after deep branch finishes (index 10 vs BFS index 2)');
+  assert(dfsOrder.indexOf('ACC_VENDOR_V') === 11, 'DFS visits ACC_VENDOR_V at the very end (index 11 vs BFS index 4)');
+
+  // Same reachable set invariant
+  const bfsSet = new Set(bfsOrder);
+  const dfsSet = new Set(dfsOrder);
+  assert(bfsSet.size === 12 && dfsSet.size === 12, 'Both traversals have 12 unique vertices');
+  for (const node of bfsSet) {
+    assert(dfsSet.has(node), `DFS reached set contains BFS node ${node}`);
+  }
+
+  // Verify disconnected / unlinked vertices are NOT reached
+  const unreachableNodes = ['ACC_ISOLATED', 'ACC_INTERNAL_POOL', 'ACC_P_CORP', 'ACC_Q_HOLDING', 'ACC_R_VENTURE'];
+  for (const u of unreachableNodes) {
+    assert(!bfsSet.has(u), `Disconnected account ${u} is unreachable in BFS`);
+    assert(!dfsSet.has(u), `Disconnected account ${u} is unreachable in DFS`);
+  }
+
   console.log('\n--- 8. Custom Investigation Lab (Vertex/Edge Mutations & Validation) ---');
   // Validation: empty ID rejected
   const errAcc = await post('/api/accounts', { id: '' });

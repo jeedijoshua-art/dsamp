@@ -17,10 +17,13 @@ export interface AccountNodeData {
   account: Account;
   isSelected?: boolean;
   isHighlighted?: boolean;
-  highlightType?: 'cycle' | 'path' | 'bfs' | 'dfs' | null;
+  highlightType?: 'cycle' | 'path' | 'bfs' | 'dfs' | 'finding' | null;
   hopIndex?: number;
   totalPathHops?: number;
   isCycleParticipant?: boolean;
+  isFlagged?: boolean;
+  isElevated?: boolean;
+  isDimmed?: boolean;
   onSetSource?: (id: string) => void;
   onSetDest?: (id: string) => void;
 }
@@ -30,10 +33,13 @@ export const AccountNode: React.FC<NodeProps<AccountNodeData>> = memo(({ data })
     account,
     isSelected,
     isHighlighted,
+    isDimmed,
     highlightType,
     hopIndex,
     totalPathHops,
     isCycleParticipant,
+    isFlagged,
+    isElevated,
     onSetSource,
     onSetDest
   } = data;
@@ -46,6 +52,11 @@ export const AccountNode: React.FC<NodeProps<AccountNodeData>> = memo(({ data })
       if (highlightType === 'path') {
         return 'border-cyan-400 ring-4 ring-cyan-400/30 shadow-[0_0_25px_rgba(6,182,212,0.5)]';
       }
+      if (highlightType === 'finding') {
+        return isElevated
+          ? 'border-rose-500 ring-4 ring-rose-500/40 shadow-[0_0_25px_rgba(244,63,94,0.6)] animate-pulse'
+          : 'border-amber-400 ring-4 ring-amber-400/40 shadow-[0_0_25px_rgba(245,158,11,0.6)] animate-pulse';
+      }
       if (highlightType === 'bfs') {
         return 'border-emerald-400 ring-4 ring-emerald-400/30 shadow-[0_0_20px_rgba(16,185,129,0.4)]';
       }
@@ -55,6 +66,12 @@ export const AccountNode: React.FC<NodeProps<AccountNodeData>> = memo(({ data })
     }
     if (isSelected) {
       return 'border-cyan-400 ring-2 ring-cyan-400/50 shadow-[0_0_15px_rgba(6,182,212,0.3)]';
+    }
+    if (isElevated) {
+      return 'border-rose-500/80 ring-1 ring-rose-500/40 shadow-[0_0_12px_rgba(244,63,94,0.25)]';
+    }
+    if (isFlagged) {
+      return 'border-amber-500/80 ring-1 ring-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.25)]';
     }
     if (account.risk_tier === 'HIGH') {
       return 'border-rose-500/60 hover:border-rose-400 hover:shadow-rose-950/40';
@@ -66,6 +83,22 @@ export const AccountNode: React.FC<NodeProps<AccountNodeData>> = memo(({ data })
   };
 
   const getRiskBadge = () => {
+    if (isElevated) {
+      return (
+        <span className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold font-mono bg-rose-500/20 text-rose-300 border border-rose-500/40 rounded-full">
+          <AlertOctagon className="w-2.5 h-2.5 text-rose-400" />
+          ELEVATED
+        </span>
+      );
+    }
+    if (isFlagged) {
+      return (
+        <span className="flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold font-mono bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-full">
+          <AlertTriangle className="w-2.5 h-2.5 text-amber-400" />
+          REVIEW
+        </span>
+      );
+    }
     if (account.risk_tier === 'HIGH') {
       return (
         <span className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 rounded-full">
@@ -101,7 +134,9 @@ export const AccountNode: React.FC<NodeProps<AccountNodeData>> = memo(({ data })
 
   return (
     <div
-      className={`relative min-w-[250px] max-w-[280px] rounded-2xl bg-navy-900/95 backdrop-blur-md p-4 border transition-all duration-200 cursor-pointer shadow-xl ${getBorderColor()}`}
+      className={`relative min-w-[250px] max-w-[280px] rounded-2xl bg-navy-900/95 backdrop-blur-md p-4 border transition-all duration-200 cursor-pointer shadow-xl ${
+        isDimmed ? 'opacity-35 hover:opacity-100 hover:scale-[1.01]' : 'opacity-100'
+      } ${getBorderColor()}`}
     >
       {/* Handles */}
       <Handle
@@ -144,6 +179,16 @@ export const AccountNode: React.FC<NodeProps<AccountNodeData>> = memo(({ data })
         <div className="absolute -top-3 left-4 px-2 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-bold font-mono shadow-md flex items-center gap-1 border border-rose-300 animate-pulse">
           <Repeat className="w-3 h-3" />
           CYCLE NODE
+        </div>
+      )}
+
+      {/* Investigation Finding Highlight Badge */}
+      {isHighlighted && highlightType === 'finding' && (
+        <div className={`absolute -top-3 left-4 px-2.5 py-0.5 rounded-full text-white text-[10px] font-bold font-mono shadow-md flex items-center gap-1 border animate-pulse ${
+          isElevated ? 'bg-rose-500 border-rose-300' : 'bg-amber-500 border-amber-300'
+        }`}>
+          <AlertTriangle className="w-3 h-3" />
+          INSPECTING EVIDENCE
         </div>
       )}
 

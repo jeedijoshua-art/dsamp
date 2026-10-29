@@ -1,12 +1,19 @@
 const express = require('express');
 const { runEngine, ENGINE_BIN } = require('./engineBridge');
-const { getSampleDataset, getPrebuiltDatasets, getDatasetById } = require('./sampleData');
+const {
+  getSampleDataset,
+  getPrebuiltDatasets,
+  getDatasetById,
+  getInvestigationScenarios,
+  getInvestigationScenarioById
+} = require('./sampleData');
 const fs = require('fs');
 
 const router = express.Router();
 
 // In-memory working dataset store (initialized with sample data, can be modified by user or reset)
 let activeDatasetId = 'fraud_investigation';
+let activeScenarioId = 'multiple_signals';
 let currentDataset = getSampleDataset();
 
 // 1. Health check & C++ engine status
@@ -31,40 +38,117 @@ router.get('/datasets', (req, res) => {
   res.json({
     status: 'success',
     active_dataset_id: activeDatasetId,
+    active_scenario_id: activeScenarioId,
     datasets: getPrebuiltDatasets()
+  });
+});
+
+// 3b. Investigation Scenarios Catalog
+router.get('/scenarios', (req, res) => {
+  res.json({
+    status: 'success',
+    active_scenario_id: activeScenarioId,
+    scenarios: getInvestigationScenarios()
   });
 });
 
 // 4. Select / Switch Active Dataset
 router.post('/datasets/select', (req, res) => {
-  const { dataset_id } = req.body;
+  const { dataset_id, scenario_id } = req.body;
   if (!dataset_id) {
     return res.status(400).json({ status: 'error', error: 'dataset_id is required' });
   }
 
   const ds = getDatasetById(dataset_id);
   activeDatasetId = ds.id;
-  currentDataset = {
-    metadata: {
-      dataset_id: ds.id,
-      dataset_label: ds.title,
-      description: ds.description,
-      currency: 'INR (Indian Rupee)',
-      unit: 'Paise (1 INR = 100 Paise)'
-    },
-    accounts: JSON.parse(JSON.stringify(ds.accounts)),
-    transactions: JSON.parse(JSON.stringify(ds.transactions)),
-    default_algorithm: ds.default_algorithm,
-    default_source: ds.default_source,
-    default_destination: ds.default_destination,
-    default_bfs_start: ds.default_bfs_start,
-    default_dfs_start: ds.default_dfs_start
-  };
+
+  if (ds.id === 'fraud_investigation') {
+    activeScenarioId = scenario_id || 'multiple_signals';
+    const sc = getInvestigationScenarioById(activeScenarioId);
+    currentDataset = {
+      metadata: {
+        dataset_id: ds.id,
+        dataset_label: ds.title,
+        scenario_id: sc.id,
+        scenario_name: sc.name,
+        description: sc.description,
+        graph_concept: sc.graph_concept,
+        currency: 'INR (Indian Rupee)',
+        unit: 'Paise (1 INR = 100 Paise)'
+      },
+      accounts: JSON.parse(JSON.stringify(sc.accounts)),
+      transactions: JSON.parse(JSON.stringify(sc.transactions)),
+      default_algorithm: ds.default_algorithm,
+      default_source: sc.default_source || ds.default_source,
+      default_destination: sc.default_destination || ds.default_destination,
+      default_bfs_start: sc.default_source || ds.default_bfs_start,
+      default_dfs_start: sc.default_source || ds.default_dfs_start
+    };
+  } else {
+    currentDataset = {
+      metadata: {
+        dataset_id: ds.id,
+        dataset_label: ds.title,
+        description: ds.description,
+        currency: 'INR (Indian Rupee)',
+        unit: 'Paise (1 INR = 100 Paise)'
+      },
+      accounts: JSON.parse(JSON.stringify(ds.accounts)),
+      transactions: JSON.parse(JSON.stringify(ds.transactions)),
+      default_algorithm: ds.default_algorithm,
+      default_source: ds.default_source,
+      default_destination: ds.default_destination,
+      default_bfs_start: ds.default_bfs_start,
+      default_dfs_start: ds.default_dfs_start
+    };
+  }
 
   res.json({
     status: 'success',
     message: `Active dataset switched to '${ds.title}'.`,
     active_dataset_id: activeDatasetId,
+    active_scenario_id: activeScenarioId,
+    dataset: currentDataset
+  });
+});
+
+// 4b. Select / Switch Investigation Scenario (within Fraud Investigation)
+router.post('/scenarios/select', (req, res) => {
+  const { scenario_id } = req.body;
+  if (!scenario_id) {
+    return res.status(400).json({ status: 'error', error: 'scenario_id is required' });
+  }
+
+  const sc = getInvestigationScenarioById(scenario_id);
+  activeDatasetId = 'fraud_investigation';
+  activeScenarioId = sc.id;
+
+  const baseDs = getDatasetById('fraud_investigation');
+  currentDataset = {
+    metadata: {
+      dataset_id: 'fraud_investigation',
+      dataset_label: 'Fraud Investigation',
+      scenario_id: sc.id,
+      scenario_name: sc.name,
+      description: sc.description,
+      graph_concept: sc.graph_concept,
+      currency: 'INR (Indian Rupee)',
+      unit: 'Paise (1 INR = 100 Paise)'
+    },
+    accounts: JSON.parse(JSON.stringify(sc.accounts)),
+    transactions: JSON.parse(JSON.stringify(sc.transactions)),
+    default_algorithm: 'investigate',
+    default_source: sc.default_source || baseDs.default_source,
+    default_destination: sc.default_destination || baseDs.default_destination,
+    default_bfs_start: sc.default_source || baseDs.default_bfs_start,
+    default_dfs_start: sc.default_source || baseDs.default_dfs_start
+  };
+
+  res.json({
+    status: 'success',
+    message: `Investigation scenario switched to '${sc.name}'.`,
+    active_dataset_id: activeDatasetId,
+    active_scenario_id: activeScenarioId,
     dataset: currentDataset
   });
 });
@@ -72,29 +156,56 @@ router.post('/datasets/select', (req, res) => {
 // 5. Reset dataset back to initial deterministic sample or active dataset
 router.post('/reset', (req, res) => {
   const targetId = req.body?.dataset_id || activeDatasetId || 'fraud_investigation';
+  const targetScenarioId = req.body?.scenario_id || (targetId === 'fraud_investigation' ? 'multiple_signals' : null);
   const ds = getDatasetById(targetId);
   activeDatasetId = ds.id;
-  currentDataset = {
-    metadata: {
-      dataset_id: ds.id,
-      dataset_label: ds.title,
-      description: ds.description,
-      currency: 'INR (Indian Rupee)',
-      unit: 'Paise (1 INR = 100 Paise)'
-    },
-    accounts: JSON.parse(JSON.stringify(ds.accounts)),
-    transactions: JSON.parse(JSON.stringify(ds.transactions)),
-    default_algorithm: ds.default_algorithm,
-    default_source: ds.default_source,
-    default_destination: ds.default_destination,
-    default_bfs_start: ds.default_bfs_start,
-    default_dfs_start: ds.default_dfs_start
-  };
+
+  if (ds.id === 'fraud_investigation') {
+    activeScenarioId = targetScenarioId || 'multiple_signals';
+    const sc = getInvestigationScenarioById(activeScenarioId);
+    currentDataset = {
+      metadata: {
+        dataset_id: ds.id,
+        dataset_label: ds.title,
+        scenario_id: sc.id,
+        scenario_name: sc.name,
+        description: sc.description,
+        graph_concept: sc.graph_concept,
+        currency: 'INR (Indian Rupee)',
+        unit: 'Paise (1 INR = 100 Paise)'
+      },
+      accounts: JSON.parse(JSON.stringify(sc.accounts)),
+      transactions: JSON.parse(JSON.stringify(sc.transactions)),
+      default_algorithm: ds.default_algorithm,
+      default_source: sc.default_source || ds.default_source,
+      default_destination: sc.default_destination || ds.default_destination,
+      default_bfs_start: sc.default_source || ds.default_bfs_start,
+      default_dfs_start: sc.default_source || ds.default_dfs_start
+    };
+  } else {
+    currentDataset = {
+      metadata: {
+        dataset_id: ds.id,
+        dataset_label: ds.title,
+        description: ds.description,
+        currency: 'INR (Indian Rupee)',
+        unit: 'Paise (1 INR = 100 Paise)'
+      },
+      accounts: JSON.parse(JSON.stringify(ds.accounts)),
+      transactions: JSON.parse(JSON.stringify(ds.transactions)),
+      default_algorithm: ds.default_algorithm,
+      default_source: ds.default_source,
+      default_destination: ds.default_destination,
+      default_bfs_start: ds.default_bfs_start,
+      default_dfs_start: ds.default_dfs_start
+    };
+  }
 
   res.json({
     status: 'success',
     message: `Dataset successfully reset to '${ds.title}' benchmark standard.`,
     active_dataset_id: activeDatasetId,
+    active_scenario_id: activeScenarioId,
     dataset: currentDataset
   });
 });
@@ -104,6 +215,7 @@ router.get('/dataset', (req, res) => {
   res.json({
     status: 'success',
     active_dataset_id: activeDatasetId,
+    active_scenario_id: activeScenarioId,
     dataset: currentDataset
   });
 });

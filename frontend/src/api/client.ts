@@ -14,21 +14,40 @@ export async function fetchDataset(): Promise<{ status: string; dataset: { accou
   return res.json();
 }
 
-export async function fetchDatasets(): Promise<{ status: string; active_dataset_id: string; datasets: import('../types').PrebuiltDataset[] }> {
+export async function fetchDatasets(): Promise<{ status: string; active_dataset_id: string; active_scenario_id?: string; datasets: import('../types').PrebuiltDataset[] }> {
   const res = await fetch(`${API_BASE}/datasets`);
   if (!res.ok) throw new Error(`Failed to fetch datasets catalog: ${res.statusText}`);
   return res.json();
 }
 
-export async function selectDataset(datasetId: string): Promise<{ status: string; message: string; active_dataset_id: string; dataset: any }> {
+export async function fetchScenarios(): Promise<{ status: string; active_scenario_id: string; scenarios: import('../types').InvestigationScenario[] }> {
+  const res = await fetch(`${API_BASE}/scenarios`);
+  if (!res.ok) throw new Error(`Failed to fetch scenarios catalog: ${res.statusText}`);
+  return res.json();
+}
+
+export async function selectDataset(datasetId: string, scenarioId?: string): Promise<{ status: string; message: string; active_dataset_id: string; active_scenario_id?: string; dataset: any }> {
   const res = await fetch(`${API_BASE}/datasets/select`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ dataset_id: datasetId })
+    body: JSON.stringify({ dataset_id: datasetId, scenario_id: scenarioId })
   });
   const data = await res.json();
   if (!res.ok || data.status === 'error') {
     throw new Error(data.error || 'Failed to switch dataset');
+  }
+  return data;
+}
+
+export async function selectScenario(scenarioId: string): Promise<{ status: string; message: string; active_dataset_id: string; active_scenario_id: string; dataset: any }> {
+  const res = await fetch(`${API_BASE}/scenarios/select`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario_id: scenarioId })
+  });
+  const data = await res.json();
+  if (!res.ok || data.status === 'error') {
+    throw new Error(data.error || 'Failed to switch scenario');
   }
   return data;
 }

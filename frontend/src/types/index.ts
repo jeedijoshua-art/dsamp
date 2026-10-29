@@ -62,6 +62,19 @@ export interface DFSResult {
   space_complexity: string;
 }
 
+export interface InvestigationScenario {
+  id: string;
+  name: string;
+  description: string;
+  graph_concept: string;
+  node_count: number;
+  edge_count: number;
+  default_source: string;
+  default_destination: string;
+  accounts: Account[];
+  transactions: Transaction[];
+}
+
 export interface PrebuiltDataset {
   id: string;
   title: string;
@@ -76,6 +89,8 @@ export interface PrebuiltDataset {
   default_destination: string;
   default_bfs_start: string;
   default_dfs_start: string;
+  scenarios?: InvestigationScenario[];
+  default_scenario_id?: string;
   accounts: Account[];
   transactions: Transaction[];
 }

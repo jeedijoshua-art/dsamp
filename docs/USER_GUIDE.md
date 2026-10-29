@@ -52,8 +52,8 @@ The Dataset Playground enables one-click loading of 5 curated academic benchmark
 - **Educational Goal:** Verify that unweighted BFS finds the path with minimum edge count (hops).
 
 #### 4. Fraud Investigation (`fraud_investigation`)
-- **Topology:** Comprehensive academic benchmark network with 14 accounts and 14 transactions. Combines layering chains, amount discrepancies, cycles, repeated transfers, and self-loops.
-- **Educational Goal:** Full multidimensional forensic investigation integrating topological graph analysis with rule-based amount retention calculations.
+- **Topology:** Comprehensive academic benchmark network with 17 accounts and 16 directed transactions. Combines branching multi-depth pathways (allowing clear contrast between BFS level-by-level exploration and DFS deep-first traversal from `ACC_ALICE`), layering chains, amount discrepancies, cycles, repeated transfers, and self-loops.
+- **Educational Goal:** Full multidimensional forensic investigation integrating topological graph analysis with rule-based amount retention calculations and demonstrative graph traversals.
 
 #### 5. Disconnected Graph (`disconnected_graph`)
 - **Topology:** 6 accounts and 4 transactions partitioned into isolated subgraphs: an active 2-hop payment pipeline, an isolated vendor pair, and a completely disconnected cold vault (`ACC_ISOLATED`).

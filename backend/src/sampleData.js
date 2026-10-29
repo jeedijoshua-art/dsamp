@@ -288,6 +288,24 @@ const SAMPLE_TRANSACTIONS = [
     memo: "Automated Sub-ledger Pool Balancing"
   },
 
+  // 6. Branching Transactions for Fraud Investigation BFS vs DFS Demonstration
+  {
+    id: "TX_BRANCH_SUPPLY",
+    from_account: "ACC_ALICE",
+    to_account: "ACC_SUPPLIER_S",
+    amount_paise: 2500000, // ₹25,000.00
+    timestamp: "2026-10-25T10:15:00Z",
+    memo: "Commercial Supply Procurement Advance"
+  },
+  {
+    id: "TX_HUB_CLEARING",
+    from_account: "ACC_TARGET_D",
+    to_account: "ACC_BRANCH_HUB",
+    amount_paise: 3500000, // ₹35,000.00
+    timestamp: "2026-10-25T13:45:00Z",
+    memo: "Offshore Clearing Facility Inflow"
+  },
+
   // Additional transactions for Shortest Route and Cycle scenarios
   {
     id: "TX_ALT_01",
@@ -336,6 +354,14 @@ const SAMPLE_TRANSACTIONS = [
     amount_paise: 500000, // ₹5,000.00
     timestamp: "2026-10-25T17:30:00Z",
     memo: "Supervisory Fee Disbursement"
+  },
+  {
+    id: "TX_FUND_01",
+    from_account: "ACC_ALICE",
+    to_account: "ACC_P_CORP",
+    amount_paise: 2500000, // ₹25,000.00
+    timestamp: "2026-10-25T11:45:00Z",
+    memo: "Initial Commercial Liquidity Advance"
   }
 ];
 
@@ -349,6 +375,97 @@ function selectAccounts(ids) {
 function selectTransactions(ids) {
   const set = new Set(ids);
   return SAMPLE_TRANSACTIONS.filter(t => set.has(t.id)).map(t => ({ ...t }));
+}
+
+/**
+ * 3 Selectable Investigation Scenarios for Fraud Investigation Dashboard
+ */
+const INVESTIGATION_SCENARIOS = [
+  {
+    id: "circular_flow",
+    name: "Circular Money Flow",
+    description: "Closed circular transaction loops transferring funds across accounts before returning to origin.",
+    graph_concept: "Directed Cycle Detection (Three-State DFS) & Back-Edges",
+    node_count: 5,
+    edge_count: 5,
+    default_source: "ACC_ALICE",
+    default_destination: "ACC_P_CORP",
+    accounts: selectAccounts([
+      "ACC_P_CORP",
+      "ACC_Q_HOLDING",
+      "ACC_R_VENTURE",
+      "ACC_AUDIT_OBSERVER",
+      "ACC_ALICE"
+    ]),
+    transactions: selectTransactions([
+      "TX_CYCLE_01",
+      "TX_CYCLE_02",
+      "TX_CYCLE_03",
+      "TX_OBS_01",
+      "TX_FUND_01"
+    ])
+  },
+  {
+    id: "intermediary_account",
+    name: "Intermediary Account",
+    description: "Multi-hop payment layering chains routing funds through transit accounts with flow retention.",
+    graph_concept: "In-Degree & Out-Degree Analysis, Multi-Hop Paths & Retention Discrepancy",
+    node_count: 6,
+    edge_count: 4,
+    default_source: "ACC_ALICE",
+    default_destination: "ACC_TARGET_D",
+    accounts: selectAccounts([
+      "ACC_ALICE",
+      "ACC_MULE_X",
+      "ACC_TARGET_D",
+      "ACC_ESCROW_VAULT",
+      "ACC_SUPPLIER_S",
+      "ACC_ISOLATED"
+    ]),
+    transactions: selectTransactions([
+      "TX_CHAIN_01",
+      "TX_CHAIN_02",
+      "TX_VAULT_01",
+      "TX_BRANCH_SUPPLY"
+    ])
+  },
+  {
+    id: "multiple_signals",
+    name: "Multiple Warning Signals",
+    description: "Comprehensive network exhibiting multi-hop layering, directed cycles, repeated transfers, and self-loops.",
+    graph_concept: "Multi-Pattern Forensic Analysis (Cycles, Layering Discrepancies, Repeated Batches, Self-Loops)",
+    node_count: 17,
+    edge_count: 16,
+    default_source: "ACC_ALICE",
+    default_destination: "ACC_TARGET_D",
+    accounts: selectAccounts([
+      "ACC_ALICE", "ACC_MULE_X", "ACC_TARGET_D",
+      "ACC_P_CORP", "ACC_Q_HOLDING", "ACC_R_VENTURE",
+      "ACC_BRANCH_HUB", "ACC_BRANCH_B1", "ACC_BRANCH_B2",
+      "ACC_BRANCH_C1", "ACC_BRANCH_C2", "ACC_BRANCH_D1", "ACC_BRANCH_D2",
+      "ACC_SUPPLIER_S", "ACC_VENDOR_V", "ACC_ISOLATED", "ACC_INTERNAL_POOL"
+    ]).filter(a => a.id !== "ACC_EXPRESS_GATEWAY" && a.id !== "ACC_SECONDARY_ROUTE" && a.id !== "ACC_ESCROW_VAULT" && a.id !== "ACC_AUDIT_OBSERVER"),
+    transactions: selectTransactions([
+      "TX_CHAIN_01", "TX_CHAIN_02",
+      "TX_BRANCH_SUPPLY", "TX_HUB_CLEARING",
+      "TX_CYCLE_01", "TX_CYCLE_02", "TX_CYCLE_03",
+      "TX_BR_01", "TX_BR_02", "TX_BR_03", "TX_BR_04", "TX_BR_05", "TX_BR_06",
+      "TX_REP_01", "TX_REP_02",
+      "TX_SELF_01"
+    ])
+  }
+];
+
+function getInvestigationScenarios() {
+  return JSON.parse(JSON.stringify(INVESTIGATION_SCENARIOS));
+}
+
+function getInvestigationScenarioById(id) {
+  const sc = INVESTIGATION_SCENARIOS.find(s => s.id === id);
+  if (!sc) {
+    return INVESTIGATION_SCENARIOS.find(s => s.id === "multiple_signals");
+  }
+  return JSON.parse(JSON.stringify(sc));
 }
 
 /**
@@ -453,16 +570,18 @@ const PREBUILT_DATASETS = [
     title: "Fraud Investigation",
     subtitle: "Academic Standard Benchmark",
     category: "Forensic Investigation",
-    description: "The comprehensive academic benchmark graph featuring the Alice → Mule X → Target D layering chain, circular round-tripping, branching clearing network, repeated vendor invoices, and self-loop pool.",
-    learning_objective: "Examine multidimensional graph analysis combining topological path tracing, cycle detection, and rule-based amount retention discrepancies.",
-    node_count: 14,
-    edge_count: 14,
+    description: "The comprehensive academic benchmark graph featuring the Alice → Mule X → Target D layering chain, commercial supply branch, regional clearing network, circular round-tripping, repeated vendor invoices, and self-loop pool.",
+    learning_objective: "Examine multidimensional graph analysis combining topological path tracing, BFS level-order vs DFS branch-deep exploration, cycle detection, and rule-based amount retention discrepancies.",
+    node_count: 17,
+    edge_count: 16,
     default_algorithm: "investigate",
     default_source: "ACC_ALICE",
     default_destination: "ACC_TARGET_D",
     default_bfs_start: "ACC_ALICE",
     default_dfs_start: "ACC_ALICE",
-    // Uses the exact 14 benchmark accounts and 14 transactions from original suite
+    scenarios: getInvestigationScenarios(),
+    default_scenario_id: "multiple_signals",
+    // 17 accounts: 12 reachable from ACC_ALICE across two distinct branches, plus 5 isolated/unreachable vertices
     accounts: selectAccounts([
       "ACC_ALICE", "ACC_MULE_X", "ACC_TARGET_D",
       "ACC_P_CORP", "ACC_Q_HOLDING", "ACC_R_VENTURE",
@@ -472,6 +591,7 @@ const PREBUILT_DATASETS = [
     ]).filter(a => a.id !== "ACC_EXPRESS_GATEWAY" && a.id !== "ACC_SECONDARY_ROUTE" && a.id !== "ACC_ESCROW_VAULT" && a.id !== "ACC_AUDIT_OBSERVER"),
     transactions: selectTransactions([
       "TX_CHAIN_01", "TX_CHAIN_02",
+      "TX_BRANCH_SUPPLY", "TX_HUB_CLEARING",
       "TX_CYCLE_01", "TX_CYCLE_02", "TX_CYCLE_03",
       "TX_BR_01", "TX_BR_02", "TX_BR_03", "TX_BR_04", "TX_BR_05", "TX_BR_06",
       "TX_REP_01", "TX_REP_02",
@@ -539,7 +659,10 @@ module.exports = {
   SAMPLE_ACCOUNTS,
   SAMPLE_TRANSACTIONS,
   PREBUILT_DATASETS,
+  INVESTIGATION_SCENARIOS,
   getPrebuiltDatasets,
   getDatasetById,
-  getSampleDataset
+  getSampleDataset,
+  getInvestigationScenarios,
+  getInvestigationScenarioById
 };

@@ -36,13 +36,19 @@ interface GraphCanvasProps {
   accounts: Account[];
   transactions: Transaction[];
   datasetId?: string;
+  scenarioId?: string;
   selectedAccountId: string | null;
   onSelectAccount: (accountId: string) => void;
-  activeHighlight: 'none' | 'path' | 'cycle' | 'bfs' | 'dfs';
+  activeHighlight: 'none' | 'path' | 'cycle' | 'bfs' | 'dfs' | 'finding';
   bfsResult?: BFSResult | null;
   dfsResult?: DFSResult | null;
   activeCycle?: DirectedCycle | null;
   shortestPathResult?: ShortestPathResult | null;
+  findingAccounts?: Set<string>;
+  findingEdges?: Set<string>;
+  findingSeverity?: 'HIGH' | 'WARNING' | 'INFO';
+  flaggedAccountIds?: Set<string>;
+  elevatedAccountIds?: Set<string>;
   stepVisitedNodes?: string[];
   stepTreeEdges?: string[];
   currentStepNode?: string;
@@ -52,11 +58,12 @@ interface GraphCanvasProps {
   onDeleteTransaction?: (txId: string) => void;
   selectedEdgeId?: string | null;
   onSelectEdge?: (edgeId: string | null) => void;
+  onClearFindingHighlight?: () => void;
   isCustomMode?: boolean;
 }
 
 // Deterministic layout per dataset to ensure clear hierarchy and zero overlap
-function computeNodePositions(accounts: Account[], datasetId?: string) {
+function computeNodePositions(accounts: Account[], datasetId?: string, scenarioId?: string) {
   if (datasetId === 'basic_traversal') {
     const treePositions: Record<string, { x: number; y: number }> = {
       ACC_BRANCH_HUB: { x: 440, y: 50 },
@@ -108,6 +115,37 @@ function computeNodePositions(accounts: Account[], datasetId?: string) {
       ACC_ISOLATED: { x: 720, y: 380 }
     };
     return mapPositions(accounts, disconnectedPositions, 80, 580);
+  }
+
+  // Investigation Scenario 1: Circular Money Flow
+  if (
+    scenarioId === 'circular_flow' ||
+    (datasetId === 'fraud_investigation' && accounts.length === 5 && accounts.some((a) => a.id === 'ACC_AUDIT_OBSERVER'))
+  ) {
+    const circularPositions: Record<string, { x: number; y: number }> = {
+      ACC_ALICE: { x: 80, y: 220 },
+      ACC_P_CORP: { x: 400, y: 220 },
+      ACC_Q_HOLDING: { x: 720, y: 100 },
+      ACC_R_VENTURE: { x: 720, y: 340 },
+      ACC_AUDIT_OBSERVER: { x: 400, y: 440 }
+    };
+    return mapPositions(accounts, circularPositions, 80, 580);
+  }
+
+  // Investigation Scenario 2: Intermediary Account
+  if (
+    scenarioId === 'intermediary_account' ||
+    (datasetId === 'fraud_investigation' && accounts.length === 6 && accounts.some((a) => a.id === 'ACC_ESCROW_VAULT'))
+  ) {
+    const intermediaryPositions: Record<string, { x: number; y: number }> = {
+      ACC_ALICE: { x: 80, y: 140 },
+      ACC_MULE_X: { x: 400, y: 140 },
+      ACC_TARGET_D: { x: 720, y: 140 },
+      ACC_ESCROW_VAULT: { x: 1040, y: 140 },
+      ACC_SUPPLIER_S: { x: 80, y: 380 },
+      ACC_ISOLATED: { x: 720, y: 380 }
+    };
+    return mapPositions(accounts, intermediaryPositions, 80, 580);
   }
 
   // Default / fraud_investigation (14 benchmark accounts in organized clusters)
@@ -171,6 +209,7 @@ const CanvasInner: React.FC<GraphCanvasProps> = ({
   accounts,
   transactions,
   datasetId,
+  scenarioId,
   selectedAccountId,
   onSelectAccount,
   activeHighlight,
@@ -178,6 +217,11 @@ const CanvasInner: React.FC<GraphCanvasProps> = ({
   dfsResult,
   activeCycle,
   shortestPathResult,
+  findingAccounts,
+  findingEdges,
+  findingSeverity,
+  flaggedAccountIds,
+  elevatedAccountIds,
   stepVisitedNodes,
   stepTreeEdges,
   currentStepNode,
@@ -187,20 +231,28 @@ const CanvasInner: React.FC<GraphCanvasProps> = ({
   onDeleteTransaction,
   selectedEdgeId,
   onSelectEdge,
+  onClearFindingHighlight,
   isCustomMode
 }) => {
   const { fitView, zoomIn, zoomOut, setCenter } = useReactFlow();
   const lastDatasetIdRef = useRef<string | undefined>(datasetId);
+  const lastScenarioIdRef = useRef<string | undefined>(scenarioId);
 
-  const positions = useMemo(() => computeNodePositions(accounts, datasetId), [accounts, datasetId]);
+  const positions = useMemo(
+    () => computeNodePositions(accounts, datasetId, scenarioId),
+    [accounts, datasetId, scenarioId]
+  );
 
-  // Determine highlighted nodes and edges (supports full-algorithm highlights & step playback)
+  // Determine highlighted nodes and edges (supports full-algorithm highlights & step playback & investigation findings)
   const highlightContext = useMemo(() => {
     const highlightedNodes = new Set<string>();
     const highlightedEdges = new Set<string>();
     const hopMap = new Map<string, number>();
 
-    if (activeHighlight === 'path' && shortestPathResult?.path_exists) {
+    if (activeHighlight === 'finding' && findingAccounts && findingAccounts.size > 0) {
+      findingAccounts.forEach((id) => highlightedNodes.add(id));
+      findingEdges?.forEach((id) => highlightedEdges.add(id));
+    } else if (activeHighlight === 'path' && shortestPathResult?.path_exists) {
       shortestPathResult.node_path.forEach((id, idx) => {
         highlightedNodes.add(id);
         hopMap.set(id, idx);
@@ -232,6 +284,8 @@ const CanvasInner: React.FC<GraphCanvasProps> = ({
     return { highlightedNodes, highlightedEdges, hopMap };
   }, [
     activeHighlight,
+    findingAccounts,
+    findingEdges,
     shortestPathResult,
     activeCycle,
     bfsResult,
@@ -248,6 +302,9 @@ const CanvasInner: React.FC<GraphCanvasProps> = ({
       const isHighlighted = highlightContext.highlightedNodes.has(acc.id);
       const isCurrentStep = currentStepNode === acc.id;
       const hopIdx = highlightContext.hopMap.get(acc.id);
+      const isFlagged = flaggedAccountIds?.has(acc.id);
+      const isElevated = elevatedAccountIds?.has(acc.id);
+      const isDimmed = activeHighlight === 'finding' && !isHighlighted;
 
       return {
         id: acc.id,
@@ -257,11 +314,14 @@ const CanvasInner: React.FC<GraphCanvasProps> = ({
           account: acc,
           isSelected,
           isHighlighted: isHighlighted || isCurrentStep,
+          isDimmed,
           highlightType: isHighlighted || isCurrentStep ? activeHighlight : null,
           isCurrentStep,
           hopIndex: hopIdx,
           totalPathHops: shortestPathResult?.hop_count,
           isCycleParticipant: activeHighlight === 'cycle' && isHighlighted,
+          isFlagged,
+          isElevated,
           onSetSource,
           onSetDest
         }
@@ -275,6 +335,8 @@ const CanvasInner: React.FC<GraphCanvasProps> = ({
     activeHighlight,
     currentStepNode,
     shortestPathResult,
+    flaggedAccountIds,
+    elevatedAccountIds,
     onSetSource,
     onSetDest
   ]);
@@ -301,7 +363,17 @@ const CanvasInner: React.FC<GraphCanvasProps> = ({
         strokeColor = '#38bdf8';
         strokeWidth = 3.5;
       } else if (isHighlighted) {
-        if (activeHighlight === 'path') {
+        if (activeHighlight === 'finding') {
+          if (findingSeverity === 'HIGH') {
+            edgeClass += 'highlighted-cycle-edge ';
+            strokeColor = '#f43f5e';
+            strokeWidth = 4.0;
+          } else {
+            edgeClass += 'highlighted-path-edge ';
+            strokeColor = '#f59e0b';
+            strokeWidth = 4.0;
+          }
+        } else if (activeHighlight === 'path') {
           edgeClass += 'highlighted-path-edge ';
           strokeColor = '#06b6d4';
           strokeWidth = 4.0;
@@ -318,6 +390,11 @@ const CanvasInner: React.FC<GraphCanvasProps> = ({
           strokeColor = '#a855f7';
           strokeWidth = 3.5;
         }
+      } else if (activeHighlight === 'finding') {
+        // Dim unrelated transaction edges when inspecting evidence
+        edgeClass += 'opacity-20 ';
+        strokeColor = '#1e293b';
+        strokeWidth = 1.0;
       }
 
       // Edge label shows ID and amount when highlighted, or on hover/selection
@@ -373,21 +450,22 @@ const CanvasInner: React.FC<GraphCanvasProps> = ({
     setEdges(edges);
   }, [edges, setEdges]);
 
-  // Fit view ONLY when active dataset changes, without repeatedly overriding manual zoom
+  // Fit view when active dataset OR scenario changes, without repeatedly overriding manual zoom
   useEffect(() => {
-    if (datasetId !== lastDatasetIdRef.current) {
+    if (datasetId !== lastDatasetIdRef.current || scenarioId !== lastScenarioIdRef.current) {
       lastDatasetIdRef.current = datasetId;
+      lastScenarioIdRef.current = scenarioId;
       const timer = setTimeout(() => {
-        fitView({ padding: 0.14, duration: 400 });
+        fitView({ padding: 0.16, duration: 400 });
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [datasetId, fitView]);
+  }, [datasetId, scenarioId, fitView]);
 
   // Initial fit on first mount
   useEffect(() => {
     const timer = setTimeout(() => {
-      fitView({ padding: 0.14, duration: 400 });
+      fitView({ padding: 0.16, duration: 400 });
     }, 150);
     return () => clearTimeout(timer);
   }, [fitView]);
@@ -415,6 +493,24 @@ const CanvasInner: React.FC<GraphCanvasProps> = ({
           <span className="text-slate-500">|</span>
           <span className="text-slate-400 font-medium">{accounts.length} Vertices, {transactions.length} Directed Edges</span>
         </div>
+
+        {activeHighlight === 'finding' && (
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-navy-900/95 backdrop-blur-md border border-cyan-400/60 text-cyan-200 text-xs font-mono font-bold shadow-xl animate-fadeIn pointer-events-auto">
+            <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_8px_#06b6d4]" />
+            <span>
+              Inspecting Evidence: {findingAccounts?.size || 0} Account{findingAccounts?.size === 1 ? '' : 's'}, {findingEdges?.size || 0} Edge{findingEdges?.size === 1 ? '' : 's'}
+            </span>
+            {onClearFindingHighlight && (
+              <button
+                onClick={onClearFindingHighlight}
+                className="ml-2 px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[10px] font-mono border border-slate-600 transition-colors cursor-pointer"
+                title="Clear selected finding and restore normal graph view"
+              >
+                Clear Highlight
+              </button>
+            )}
+          </div>
+        )}
 
         {activeHighlight === 'path' && shortestPathResult?.path_exists && (
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-cyan-950/90 backdrop-blur-md border border-cyan-400/60 text-cyan-200 text-xs font-mono font-bold shadow-xl animate-fadeIn pointer-events-auto">
@@ -513,25 +609,48 @@ const CanvasInner: React.FC<GraphCanvasProps> = ({
         </button>
       </div>
 
-      {/* Bottom Left Algorithm Legend (Only shown when vertices exist) */}
+      {/* Bottom Left Legend (Only shown when vertices exist) */}
       {accounts.length > 0 && (
-        <div className="absolute bottom-4 left-4 z-10 flex flex-wrap items-center gap-x-4 gap-y-1.5 max-w-[calc(100%-8rem)] px-3.5 py-2 rounded-xl bg-navy-900/95 backdrop-blur-md border border-slate-800 text-[11px] text-slate-300 pointer-events-none shadow-xl">
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_8px_#06b6d4]" />
-            <span className="font-medium text-slate-200">Reconstructed Path</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-[0_0_8px_#f43f5e]" />
-            <span className="font-medium text-slate-200">Circular Loop</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#10b981]" />
-            <span className="font-medium text-slate-200">BFS Tree</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-purple-400 shadow-[0_0_8px_#c084fc]" />
-            <span className="font-medium text-slate-200">DFS Tree</span>
-          </div>
+        <div className="absolute bottom-4 left-4 z-10 flex flex-wrap items-center gap-x-3.5 gap-y-1.5 max-w-[calc(100%-8rem)] px-3.5 py-2 rounded-xl bg-navy-900/95 backdrop-blur-md border border-slate-800 text-[11px] text-slate-300 pointer-events-none shadow-xl">
+          {datasetId === 'fraud_investigation' ? (
+            <>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-slate-600 border border-slate-400" />
+                <span className="font-medium text-slate-300">Standard Account</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500/30 border border-amber-400 shadow-[0_0_6px_#f59e0b]" />
+                <span className="font-medium text-amber-300">Flagged for Review</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-500/30 border border-rose-400 shadow-[0_0_6px_#f43f5e]" />
+                <span className="font-medium text-rose-300">Elevated Concern</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3.5 h-1 rounded bg-cyan-400 shadow-[0_0_6px_#06b6d4]" />
+                <span className="font-medium text-cyan-300">Inspected Flow Edge</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_8px_#06b6d4]" />
+                <span className="font-medium text-slate-200">Reconstructed Path</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-[0_0_8px_#f43f5e]" />
+                <span className="font-medium text-slate-200">Circular Loop</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#10b981]" />
+                <span className="font-medium text-slate-200">BFS Tree</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-purple-400 shadow-[0_0_8px_#c084fc]" />
+                <span className="font-medium text-slate-200">DFS Tree</span>
+              </div>
+            </>
+          )}
         </div>
       )}
 
